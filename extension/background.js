@@ -18,6 +18,17 @@ async function scan(tabId, url) {
       Dangerous:  { text: "X",  color: "#d6336c" }
     };
     const b = map[data.verdict] || { text: "?", color: "#888888" };
+
+    if (data.verdict === "Dangerous") {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ["warning.js"]
+        });
+        chrome.tabs.sendMessage(tabId, { type: "SHOW_WARNING", data });
+      } catch (e) {}
+    }
+
     chrome.action.setBadgeText({ tabId, text: b.text });
     chrome.action.setBadgeBackgroundColor({ tabId, color: b.color });
   } catch (e) {
