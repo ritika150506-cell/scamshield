@@ -1,5 +1,4 @@
 import re
-from urllib.parse import urlparse
 
 SUSPICIOUS_WORDS = ["login", "verify", "update", "secure", "account",
                     "bank", "kyc", "free", "bonus", "confirm", "upi", "refund"]
@@ -9,9 +8,16 @@ def extract_features(url: str) -> dict:
     url = str(url).strip()
     # remove the scheme so the model can't cheat using http/https
     clean = re.sub(r"^https?://", "", url.lower())
-    parsed = urlparse("http://" + clean)
-    host = parsed.netloc
-    path = parsed.path
+
+    # split by hand instead of urlparse (urlparse crashes on malformed URLs)
+    host_end = len(clean)
+    for sep in ("/", "?", "#"):
+        i = clean.find(sep)
+        if i != -1:
+            host_end = min(host_end, i)
+    host = clean[:host_end]
+    rest = clean[host_end:]
+    path = re.split(r"[?#]", rest, maxsplit=1)[0]
 
     digits = sum(c.isdigit() for c in clean)
     return {
