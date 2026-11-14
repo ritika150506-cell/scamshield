@@ -2,5 +2,6 @@ venv/
 data/
 __pycache__/
 *.joblib
+!ml/url_model.joblib
 *.db
 .ipynb_checkpoints/
