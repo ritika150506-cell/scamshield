@@ -3,23 +3,35 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body { width: 320px; font-family: Arial, sans-serif; padding: 14px; }
+    body { width: 340px; font-family: Arial, sans-serif; padding: 14px; }
     h3 { margin: 0 0 8px; }
+    h4 { margin: 14px 0 6px; }
     #url { font-size: 12px; color: #555; word-break: break-all; margin-bottom: 10px; }
-    #verdict { font-size: 22px; font-weight: bold; padding: 10px;
-               border-radius: 8px; text-align: center; color: #fff;
-               background: #888; }
+    .box { font-size: 20px; font-weight: bold; padding: 10px;
+           border-radius: 8px; text-align: center; color: #fff; background: #888; }
     .Safe { background: #2e9e4f !important; }
     .Suspicious { background: #e0a100 !important; }
     .Dangerous { background: #d6336c !important; }
     ul { padding-left: 18px; font-size: 13px; }
+    textarea { width: 100%; height: 70px; box-sizing: border-box; font-size: 13px; }
+    button { margin-top: 6px; padding: 6px 12px; cursor: pointer; }
+    hr { margin: 14px 0; border: none; border-top: 1px solid #ddd; }
   </style>
 </head>
 <body>
   <h3>ScamShield</h3>
+
   <div id="url">Checking...</div>
-  <div id="verdict">...</div>
+  <div id="verdict" class="box">...</div>
   <ul id="reasons"></ul>
+
+  <hr>
+  <h4>Check a message (SMS / email)</h4>
+  <textarea id="msg" placeholder="Paste a suspicious message here..."></textarea>
+  <button id="checkMsg">Check message</button>
+  <div id="msgVerdict" class="box" style="display:none; margin-top:10px;"></div>
+  <ul id="msgReasons"></ul>
+
   <script src="popup.js"></script>
 </body>
 </html>
