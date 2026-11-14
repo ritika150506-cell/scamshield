@@ -205,4 +205,9 @@ def stats():
     with sqlite3.connect(DB_PATH) as con:
         rows = con.execute(
             "SELECT verdict, COUNT(*) FROM scans GROUP BY verdict").fetchall()
-    return {"total":
+    return {"total": sum(c for _, c in rows), "by_verdict": dict(rows)}
+
+
+@app.get("/dashboard", dependencies=[Depends(require_key)])
+def dashboard():
+    return FileResponse(DASHBOARD)
