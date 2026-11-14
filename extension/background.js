@@ -1,4 +1,4 @@
-const API = "http://127.0.0.1:8000/scan";
+const API = "https://scamshield-np7w.onrender.com/scan";
 const recent = {}; // tabId -> {url, time}
 
 function shouldSkip(url) {
