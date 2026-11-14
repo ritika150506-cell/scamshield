@@ -1,0 +1,36 @@
+const API = "http://127.0.0.1:8000/scan";
+
+async function scan(tabId, url) {
+  if (!url || !url.startsWith("http")) {
+    chrome.action.setBadgeText({ tabId, text: "" });
+    return;
+  }
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    const map = {
+      Safe:       { text: "OK", color: "#2e9e4f" },
+      Suspicious: { text: "!",  color: "#e0a100" },
+      Dangerous:  { text: "X",  color: "#d6336c" }
+    };
+    const b = map[data.verdict] || { text: "?", color: "#888888" };
+    chrome.action.setBadgeText({ tabId, text: b.text });
+    chrome.action.setBadgeBackgroundColor({ tabId, color: b.color });
+  } catch (e) {
+    chrome.action.setBadgeText({ tabId, text: "?" });
+    chrome.action.setBadgeBackgroundColor({ tabId, color: "#888888" });
+  }
+}
+
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status === "complete") scan(tabId, tab.url);
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  const tab = await chrome.tabs.get(tabId);
+  scan(tabId, tab.url);
+});
