@@ -1,4 +1,6 @@
 import re
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import joblib
@@ -10,6 +12,32 @@ app = FastAPI(title="ScamShield API")
 MODEL_PATH = Path(__file__).resolve().parent.parent / "ml" / "url_model.joblib"
 bundle = joblib.load(MODEL_PATH)
 vec, clf = bundle["vec"], bundle["clf"]
+
+# ---------- Database (SQLite) ----------
+
+DB_PATH = Path(__file__).resolve().parent / "scans.db"
+
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as con:
+        con.execute("""CREATE TABLE IF NOT EXISTS scans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT, content TEXT, verdict TEXT,
+            score REAL, created_at TEXT)""")
+
+
+def save_scan(kind, content, verdict, score):
+    with sqlite3.connect(DB_PATH) as con:
+        con.execute(
+            "INSERT INTO scans (kind, content, verdict, score, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (kind, content[:500], verdict, score,
+             datetime.now(timezone.utc).isoformat()))
+
+
+init_db()
+
+# ---------- Config ----------
 
 # Domains we trust: checked BEFORE the model
 TRUSTED = {
@@ -50,8 +78,9 @@ def home():
     return {"status": "ScamShield API is running"}
 
 
-@app.post("/scan")
-def scan(item: UrlIn):
+# ---------- URL scanner ----------
+
+def scan_core(item: UrlIn):
     clean = clean_url(item.url)
     host = get_host(clean)
     reasons = []
@@ -84,6 +113,13 @@ def scan(item: UrlIn):
 
     return {"url": item.url, "verdict": verdict,
             "score": round(score, 3), "reasons": reasons}
+
+
+@app.post("/scan")
+def scan(item: UrlIn):
+    r = scan_core(item)
+    save_scan("url", item.url, r["verdict"], r["score"])
+    return r
 
 
 # ---------- Scam message (SMS / email text) scanner ----------
@@ -120,7 +156,7 @@ def scan_text(item: TextIn):
     links = [m.group(0).rstrip(".,)") for m in LINK_RE.finditer(item.text)]
     link_results = []
     for link in links[:5]:
-        r = scan(UrlIn(url=link))
+        r = scan_core(UrlIn(url=link))  # scan_core: links are not saved separately
         link_results.append(
             {"url": link, "verdict": r["verdict"], "score": r["score"]})
         if r["verdict"] == "Dangerous":
@@ -134,5 +170,26 @@ def scan_text(item: TextIn):
     else:
         verdict = "Safe"
 
+    save_scan("text", item.text, verdict, round(score, 2))
     return {"verdict": verdict, "score": round(score, 2),
             "reasons": reasons, "links": link_results}
+
+
+# ---------- History and stats ----------
+
+@app.get("/history")
+def history(limit: int = 50):
+    with sqlite3.connect(DB_PATH) as con:
+        rows = con.execute(
+            "SELECT id, kind, content, verdict, score, created_at "
+            "FROM scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    cols = ["id", "kind", "content", "verdict", "score", "created_at"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+@app.get("/stats")
+def stats():
+    with sqlite3.connect(DB_PATH) as con:
+        rows = con.execute(
+            "SELECT verdict, COUNT(*) FROM scans GROUP BY verdict").fetchall()
+    return {"total": sum(c for _, c in rows), "by_verdict": dict(rows)}
