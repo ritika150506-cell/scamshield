@@ -60,3 +60,47 @@
         const v = stats.by_verdict;
 
         document.getElementById("total").textContent = stats.total;
+        document.getElementById("safe").textContent = v.Safe || 0;
+        document.getElementById("susp").textContent = v.Suspicious || 0;
+        document.getElementById("dang").textContent = v.Dangerous || 0;
+
+        const bar = document.getElementById("bar");
+        bar.innerHTML = "";
+        ["Safe", "Suspicious", "Dangerous"].forEach(k => {
+          if (!v[k]) return;
+          const d = document.createElement("div");
+          d.style.width = (v[k] / stats.total * 100) + "%";
+          d.style.background = colors[k];
+          bar.appendChild(d);
+        });
+
+        const rows = document.getElementById("rows");
+        rows.innerHTML = "";
+        hist.forEach(h => {
+          const tr = document.createElement("tr");
+          [new Date(h.created_at).toLocaleString(), h.kind, h.content].forEach((t, i) => {
+            const td = document.createElement("td");
+            td.textContent = t;
+            if (i === 2) td.className = "content";
+            tr.appendChild(td);
+          });
+          const tdV = document.createElement("td");
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.style.background = colors[h.verdict];
+          pill.textContent = h.verdict;
+          tdV.appendChild(pill);
+          tr.appendChild(tdV);
+          const tdS = document.createElement("td");
+          tdS.textContent = h.score;
+          tr.appendChild(tdS);
+          rows.appendChild(tr);
+        });
+      } catch (e) {
+        err.textContent = "Network error: " + e;
+      }
+    }
+    load();
+  </script>
+</body>
+</html>
