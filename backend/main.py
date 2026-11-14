@@ -1,10 +1,12 @@
+import os
 import re
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -15,6 +17,16 @@ MODEL_PATH = BASE_DIR / "ml" / "url_model.joblib"
 DASHBOARD = BASE_DIR / "dashboard" / "index.html"
 bundle = joblib.load(MODEL_PATH)
 vec, clf = bundle["vec"], bundle["clf"]
+
+# Secret key for dashboard/history/stats. Set ADMIN_KEY on Render.
+# If it is not set (running locally), those pages stay open.
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
+
+
+def require_key(key: str = ""):
+    if ADMIN_KEY and not secrets.compare_digest(key, ADMIN_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing key")
+
 
 # ---------- Database (SQLite) ----------
 
@@ -42,7 +54,6 @@ init_db()
 
 # ---------- Config ----------
 
-# Domains we trust: checked BEFORE the model
 TRUSTED = {
     "google.com", "github.com", "amazon.in", "amazon.com", "microsoft.com",
     "wikipedia.org", "sbi.co.in", "onlinesbi.sbi", "hdfcbank.com",
@@ -145,7 +156,6 @@ SCAM_PATTERNS = [
      "Asks for a payment or transfer"),
 ]
 
-# matches http(s) links and bare domains like sbi-kyc-update-now.top or bit.ly/xyz
 LINK_RE = re.compile(
     r"(https?://\S+|\b[\w-]+(\.[a-z][a-z-]{1,})+(/\S*)?)", re.I)
 
@@ -159,7 +169,7 @@ def scan_text(item: TextIn):
     links = [m.group(0).rstrip(".,)") for m in LINK_RE.finditer(item.text)]
     link_results = []
     for link in links[:5]:
-        r = scan_core(UrlIn(url=link))  # scan_core: links are not saved separately
+        r = scan_core(UrlIn(url=link))
         link_results.append(
             {"url": link, "verdict": r["verdict"], "score": r["score"]})
         if r["verdict"] == "Dangerous":
@@ -178,9 +188,9 @@ def scan_text(item: TextIn):
             "reasons": reasons, "links": link_results}
 
 
-# ---------- History, stats and dashboard ----------
+# ---------- Protected: history, stats, dashboard ----------
 
-@app.get("/history")
+@app.get("/history", dependencies=[Depends(require_key)])
 def history(limit: int = 50):
     with sqlite3.connect(DB_PATH) as con:
         rows = con.execute(
@@ -190,14 +200,9 @@ def history(limit: int = 50):
     return [dict(zip(cols, r)) for r in rows]
 
 
-@app.get("/stats")
+@app.get("/stats", dependencies=[Depends(require_key)])
 def stats():
     with sqlite3.connect(DB_PATH) as con:
         rows = con.execute(
             "SELECT verdict, COUNT(*) FROM scans GROUP BY verdict").fetchall()
-    return {"total": sum(c for _, c in rows), "by_verdict": dict(rows)}
-
-
-@app.get("/dashboard")
-def dashboard():
-    return FileResponse(DASHBOARD)
+    return {"total":
