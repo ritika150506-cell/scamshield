@@ -17,11 +17,13 @@
     td.content { max-width: 380px; word-break: break-all; }
     .pill { color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
     button { padding: 6px 12px; cursor: pointer; }
+    #err { color: #d6336c; margin: 10px 0; }
   </style>
 </head>
 <body>
   <h1>ScamShield Dashboard</h1>
   <button onclick="load()">Refresh</button>
+  <div id="err"></div>
 
   <div class="cards">
     <div class="card total"><b id="total">0</b>Total scans</div>
@@ -42,48 +44,19 @@
     const colors = { Safe: "#2e9e4f", Suspicious: "#e0a100", Dangerous: "#d6336c" };
 
     async function load() {
-      const stats = await (await fetch("/stats")).json();
-      const hist = await (await fetch("/history?limit=50")).json();
-      const v = stats.by_verdict;
-      document.getElementById("total").textContent = stats.total;
-      document.getElementById("safe").textContent = v.Safe || 0;
-      document.getElementById("susp").textContent = v.Suspicious || 0;
-      document.getElementById("dang").textContent = v.Dangerous || 0;
+      const err = document.getElementById("err");
+      err.textContent = "";
+      const key = encodeURIComponent(
+        new URLSearchParams(location.search).get("key") || "");
+      try {
+        const sRes = await fetch("/stats?key=" + key);
+        const hRes = await fetch("/history?limit=50&key=" + key);
+        if (!sRes.ok || !hRes.ok) {
+          err.textContent = "Could not load data (check the key in the URL).";
+          return;
+        }
+        const stats = await sRes.json();
+        const hist = await hRes.json();
+        const v = stats.by_verdict;
 
-      const bar = document.getElementById("bar");
-      bar.innerHTML = "";
-      ["Safe", "Suspicious", "Dangerous"].forEach(k => {
-        if (!v[k]) return;
-        const d = document.createElement("div");
-        d.style.width = (v[k] / stats.total * 100) + "%";
-        d.style.background = colors[k];
-        bar.appendChild(d);
-      });
-
-      const rows = document.getElementById("rows");
-      rows.innerHTML = "";
-      hist.forEach(h => {
-        const tr = document.createElement("tr");
-        [new Date(h.created_at).toLocaleString(), h.kind, h.content].forEach((t, i) => {
-          const td = document.createElement("td");
-          td.textContent = t;
-          if (i === 2) td.className = "content";
-          tr.appendChild(td);
-        });
-        const tdV = document.createElement("td");
-        const pill = document.createElement("span");
-        pill.className = "pill";
-        pill.style.background = colors[h.verdict];
-        pill.textContent = h.verdict;
-        tdV.appendChild(pill);
-        tr.appendChild(tdV);
-        const tdS = document.createElement("td");
-        tdS.textContent = h.score;
-        tr.appendChild(tdS);
-        rows.appendChild(tr);
-      });
-    }
-    load();
-  </script>
-</body>
-</html>
+        document.getElementById("total").textContent = stats.total;
