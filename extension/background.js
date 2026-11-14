@@ -1,10 +1,23 @@
 const API = "http://127.0.0.1:8000/scan";
+const recent = {}; // tabId -> {url, time}
+
+function shouldSkip(url) {
+  return !url || !url.startsWith("http") ||
+         url.startsWith("http://127.0.0.1") ||
+         url.startsWith("http://localhost");
+}
 
 async function scan(tabId, url) {
-  if (!url || !url.startsWith("http")) {
+  if (shouldSkip(url)) {
     chrome.action.setBadgeText({ tabId, text: "" });
     return;
   }
+  // skip if the same tab+URL was scanned in the last 10 seconds
+  const now = Date.now();
+  const last = recent[tabId];
+  if (last && last.url === url && now - last.time < 10000) return;
+  recent[tabId] = { url, time: now };
+
   try {
     const res = await fetch(API, {
       method: "POST",

@@ -5,11 +5,14 @@ from pathlib import Path
 
 import joblib
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="ScamShield API")
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "ml" / "url_model.joblib"
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_PATH = BASE_DIR / "ml" / "url_model.joblib"
+DASHBOARD = BASE_DIR / "dashboard" / "index.html"
 bundle = joblib.load(MODEL_PATH)
 vec, clf = bundle["vec"], bundle["clf"]
 
@@ -97,99 +100,4 @@ def scan_core(item: UrlIn):
         reasons.append("Uses a domain ending often abused by scammers")
     if host in SHORTENERS:
         reasons.append("Shortened link hides the real destination")
-    if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", host):
-        reasons.append("Uses a raw IP address instead of a domain name")
-    if clean.count("-") >= 3:
-        reasons.append("Domain has many hyphens")
-    if score >= 0.5:
-        reasons.append("Text pattern closely matches known phishing URLs")
-
-    if score >= 0.8:
-        verdict = "Dangerous"
-    elif score >= 0.4:
-        verdict = "Suspicious"
-    else:
-        verdict = "Safe"
-
-    return {"url": item.url, "verdict": verdict,
-            "score": round(score, 3), "reasons": reasons}
-
-
-@app.post("/scan")
-def scan(item: UrlIn):
-    r = scan_core(item)
-    save_scan("url", item.url, r["verdict"], r["score"])
-    return r
-
-
-# ---------- Scam message (SMS / email text) scanner ----------
-
-SCAM_PATTERNS = [
-    (r"\b(kyc|know your customer)\b", "Asks you to update or verify KYC"),
-    (r"(account|card|sim|upi).{0,30}(block|suspend|deactivat|expire|freez)",
-     "Threatens to block or suspend your account"),
-    (r"\b(urgent|immediately|within \d+ (hours|hrs|minutes)|last chance|expires? today)\b",
-     "Creates false urgency"),
-    (r"\b(otp|cvv|pin|password)\b", "Mentions OTP, PIN, CVV or password"),
-    (r"(lottery|lucky draw|you (have )?won|prize|cashback|reward points)",
-     "Promises a prize or reward"),
-    (r"(refund|electricity bill|power (will be )?(cut|disconnect))",
-     "Refund or utility-bill pressure"),
-    (r"(click|tap|open).{0,20}(link|here|below)", "Pushes you to click a link"),
-    (r"(anydesk|teamviewer|quicksupport)",
-     "Asks you to install remote-access software"),
-    (r"(send|transfer|pay).{0,20}(₹|rs\.?|inr|\d+)",
-     "Asks for a payment or transfer"),
-]
-
-# matches http(s) links and bare domains like sbi-kyc-update-now.top or bit.ly/xyz
-LINK_RE = re.compile(
-    r"(https?://\S+|\b[\w-]+(\.[a-z][a-z-]{1,})+(/\S*)?)", re.I)
-
-
-@app.post("/scan-text")
-def scan_text(item: TextIn):
-    text = item.text.lower()
-    reasons = [msg for pat, msg in SCAM_PATTERNS if re.search(pat, text)]
-    score = min(len(reasons) / 4, 1.0)
-
-    links = [m.group(0).rstrip(".,)") for m in LINK_RE.finditer(item.text)]
-    link_results = []
-    for link in links[:5]:
-        r = scan_core(UrlIn(url=link))  # scan_core: links are not saved separately
-        link_results.append(
-            {"url": link, "verdict": r["verdict"], "score": r["score"]})
-        if r["verdict"] == "Dangerous":
-            reasons.append(f"Contains a dangerous link: {link}")
-            score = max(score, 0.9)
-
-    if score >= 0.75:
-        verdict = "Dangerous"
-    elif score >= 0.4:
-        verdict = "Suspicious"
-    else:
-        verdict = "Safe"
-
-    save_scan("text", item.text, verdict, round(score, 2))
-    return {"verdict": verdict, "score": round(score, 2),
-            "reasons": reasons, "links": link_results}
-
-
-# ---------- History and stats ----------
-
-@app.get("/history")
-def history(limit: int = 50):
-    with sqlite3.connect(DB_PATH) as con:
-        rows = con.execute(
-            "SELECT id, kind, content, verdict, score, created_at "
-            "FROM scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-    cols = ["id", "kind", "content", "verdict", "score", "created_at"]
-    return [dict(zip(cols, r)) for r in rows]
-
-
-@app.get("/stats")
-def stats():
-    with sqlite3.connect(DB_PATH) as con:
-        rows = con.execute(
-            "SELECT verdict, COUNT(*) FROM scans GROUP BY verdict").fetchall()
-    return {"total": sum(c for _, c in rows), "by_verdict": dict(rows)}
+    if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}",

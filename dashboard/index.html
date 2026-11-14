@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ScamShield Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 16px; color: #222; }
+    h1 { margin-bottom: 4px; }
+    .cards { display: flex; gap: 12px; margin: 18px 0; }
+    .card { flex: 1; padding: 16px; border-radius: 10px; color: #fff; text-align: center; }
+    .card b { display: block; font-size: 30px; }
+    .total { background: #444; } .Safe { background: #2e9e4f; }
+    .Suspicious { background: #e0a100; } .Dangerous { background: #d6336c; }
+    .bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: #eee; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+    td.content { max-width: 380px; word-break: break-all; }
+    .pill { color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+    button { padding: 6px 12px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>ScamShield Dashboard</h1>
+  <button onclick="load()">Refresh</button>
+
+  <div class="cards">
+    <div class="card total"><b id="total">0</b>Total scans</div>
+    <div class="card Safe"><b id="safe">0</b>Safe</div>
+    <div class="card Suspicious"><b id="susp">0</b>Suspicious</div>
+    <div class="card Dangerous"><b id="dang">0</b>Dangerous</div>
+  </div>
+
+  <div class="bar" id="bar"></div>
+
+  <h3>Recent scans</h3>
+  <table>
+    <thead><tr><th>Time</th><th>Type</th><th>Content</th><th>Verdict</th><th>Score</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    const colors = { Safe: "#2e9e4f", Suspicious: "#e0a100", Dangerous: "#d6336c" };
+
+    async function load() {
+      const stats = await (await fetch("/stats")).json();
+      const hist = await (await fetch("/history?limit=50")).json();
+      const v = stats.by_verdict;
+      document.getElementById("total").textContent = stats.total;
+      document.getElementById("safe").textContent = v.Safe || 0;
+      document.getElementById("susp").textContent = v.Suspicious || 0;
+      document.getElementById("dang").textContent = v.Dangerous || 0;
+
+      const bar = document.getElementById("bar");
+      bar.innerHTML = "";
+      ["Safe", "Suspicious", "Dangerous"].forEach(k => {
+        if (!v[k]) return;
+        const d = document.createElement("div");
+        d.style.width = (v[k] / stats.total * 100) + "%";
+        d.style.background = colors[k];
+        bar.appendChild(d);
+      });
+
+      const rows = document.getElementById("rows");
+      rows.innerHTML = "";
+      hist.forEach(h => {
+        const tr = document.createElement("tr");
+        [new Date(h.created_at).toLocaleString(), h.kind, h.content].forEach((t, i) => {
+          const td = document.createElement("td");
+          td.textContent = t;
+          if (i === 2) td.className = "content";
+          tr.appendChild(td);
+        });
+        const tdV = document.createElement("td");
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.style.background = colors[h.verdict];
+        pill.textContent = h.verdict;
+        tdV.appendChild(pill);
+        tr.appendChild(tdV);
+        const tdS = document.createElement("td");
+        tdS.textContent = h.score;
+        tr.appendChild(tdS);
+        rows.appendChild(tr);
+      });
+    }
+    load();
+  </script>
+</body>
+</html>
