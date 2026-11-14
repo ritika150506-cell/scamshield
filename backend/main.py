@@ -28,6 +28,10 @@ class UrlIn(BaseModel):
     url: str
 
 
+class TextIn(BaseModel):
+    text: str
+
+
 def clean_url(u: str) -> str:
     return re.sub(r"^https?://", "", u.strip().lower())
 
@@ -80,3 +84,55 @@ def scan(item: UrlIn):
 
     return {"url": item.url, "verdict": verdict,
             "score": round(score, 3), "reasons": reasons}
+
+
+# ---------- Scam message (SMS / email text) scanner ----------
+
+SCAM_PATTERNS = [
+    (r"\b(kyc|know your customer)\b", "Asks you to update or verify KYC"),
+    (r"(account|card|sim|upi).{0,30}(block|suspend|deactivat|expire|freez)",
+     "Threatens to block or suspend your account"),
+    (r"\b(urgent|immediately|within \d+ (hours|hrs|minutes)|last chance|expires? today)\b",
+     "Creates false urgency"),
+    (r"\b(otp|cvv|pin|password)\b", "Mentions OTP, PIN, CVV or password"),
+    (r"(lottery|lucky draw|you (have )?won|prize|cashback|reward points)",
+     "Promises a prize or reward"),
+    (r"(refund|electricity bill|power (will be )?(cut|disconnect))",
+     "Refund or utility-bill pressure"),
+    (r"(click|tap|open).{0,20}(link|here|below)", "Pushes you to click a link"),
+    (r"(anydesk|teamviewer|quicksupport)",
+     "Asks you to install remote-access software"),
+    (r"(send|transfer|pay).{0,20}(₹|rs\.?|inr|\d+)",
+     "Asks for a payment or transfer"),
+]
+
+# matches http(s) links and bare domains like sbi-kyc-update-now.top or bit.ly/xyz
+LINK_RE = re.compile(
+    r"(https?://\S+|\b[\w-]+(\.[a-z][a-z-]{1,})+(/\S*)?)", re.I)
+
+
+@app.post("/scan-text")
+def scan_text(item: TextIn):
+    text = item.text.lower()
+    reasons = [msg for pat, msg in SCAM_PATTERNS if re.search(pat, text)]
+    score = min(len(reasons) / 4, 1.0)
+
+    links = [m.group(0).rstrip(".,)") for m in LINK_RE.finditer(item.text)]
+    link_results = []
+    for link in links[:5]:
+        r = scan(UrlIn(url=link))
+        link_results.append(
+            {"url": link, "verdict": r["verdict"], "score": r["score"]})
+        if r["verdict"] == "Dangerous":
+            reasons.append(f"Contains a dangerous link: {link}")
+            score = max(score, 0.9)
+
+    if score >= 0.75:
+        verdict = "Dangerous"
+    elif score >= 0.4:
+        verdict = "Suspicious"
+    else:
+        verdict = "Safe"
+
+    return {"verdict": verdict, "score": round(score, 2),
+            "reasons": reasons, "links": link_results}
